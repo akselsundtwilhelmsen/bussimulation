@@ -10,7 +10,7 @@ class passengerGenerator:
     def run(self):
         while True:
             wait = np.random.exponential(1/self.stop.getParameter())
-            bin.put(1)
+            self.stop.addPassenger()
             yield env.timeout(wait)
 
 
@@ -23,58 +23,114 @@ class busStop:
     def getParameter(self):
         return self.parameter
     
-    def getBinLevel(self):
+    def getPassengerCount(self):
         return self.bin.level
 
     def pickUp(self, n):
+        if self.parameter == None:
+            return 0
         return self.bin.get(n)
+    
+    def addPassenger(self):
+        self.bin.put(1)
+        
+    def toString(self):
+        return self.label
 
 
 class routeSelector:
     def __init__(self, env, routes):
         self.routes = routes
-        self.action = env.process(self.run())
+        #self.action = env.process(self.run())
+    
+    def calculateWeight(self, route):
+        passengerCount = 0
+        for key in routes.keys(): 
+            for stop in routes[key][1]:
+                passengerCount += stop.getPassengerCount()
+        return passengerCount
 
-    def pickRoute(self):
-        routeKeys = list(self.routes.keys())
-        index = np.random.randint(len(routeKeys))
-        return self.routes[routeKeys[index]]
-
-    def run(self):
-        while True:
-            yield self.
-
+    def pickRoute(self, startStop):
+        weight = 0
+        bestRoute = None
+        for key in self.routes.keys():
+            currentRoute = self.routes[key]
+            if currentRoute[1][0] == startStop:
+                currentWeight = self.calculateWeight(currentRoute[1]) 
+                if currentWeight >= weight:
+                    weight = currentWeight
+                    bestRoute = currentRoute
+        return bestRoute
+        
 
 class bus:
-    def __init__(self, env, capacity, route):
+    def __init__(self, env, capacity, routeSelector, busID, startStop):
         self.capacity = capacity
         self.passengerCount = 0
-        self.setRoute(route)
+        self.routeSelector = routeSelector
+        self.setRoute(startStop)
+        self.busID = busID
+        self.utilizationLog = []
         self.action = env.process(self.run())
         
     def pickUp(self, n):
-        self.routeStops[self.currentProgress].pickUp(n)
+        self.getCurrentStop().pickUp(n)
+        self.passengerCount += n
+    
+    def dropOff(self):
+        self.passengerCount -= 1
 
-    def setRoute(self, route):
+    def setRoute(self, startStop=None):
+        if startStop:
+            route = self.routeSelector.pickRoute(startStop)
+        else:
+            route = self.routeSelector.pickRoute(self.routeStops[-1])
+        self.currentProgress = 0
+        self.passengerCount = 0
         self.routeStops = route[1]
         self.routeRoads = route[2]
         self.routeLength = len(self.routeRoads)
-        self.currentProgress = 0
-
-    def advance(self):
-        self.currentProgress += 1
-
+    
+    def getCurrentStop(self):
+        return self.routeStops[self.currentProgress+1]
+    
+    def getUtilizationLog(self):
+        return self.utilizationLog
+    
+    def calculatePickUpCount(self):
+        waitingPassengers = self.getCurrentStop().getPassengerCount()
+        maxPickup = self.capacity - self.passengerCount
+        if(waitingPassengers < maxPickup):
+            return waitingPassengers
+        return maxPickup
+        
     def run(self):
         while True:
-            if self.currentProgress + 1 == self.routeLength:
+            if self.currentProgress >= self.routeLength:
                 self.setRoute()
-            yield env.timeout(self.routeRoads[self.currentProgress])
-            # calculate pickup n
-            # pickup
-            # advance
+                print("")
+            else:
+                # Drop off passengers
+                for passenger in range(self.passengerCount):
+                    if np.random.rand() < Q:
+                        self.dropOff()
+                
+                # Pick up passengers
+                pickUpCount = self.calculatePickUpCount()
+                if pickUpCount > 0:
+                    self.pickUp(pickUpCount)
+                print(f"Bus: {self.busID} has {self.passengerCount} passengers at {self.getCurrentStop().toString()}")
+                
+                # Collect utilization statistcs
+                self.utilizationLog.append(self.passengerCount * self.routeRoads[self.currentProgress] / self.capacity)
+                
+                yield env.timeout(self.routeRoads[self.currentProgress])
+                self.currentProgress += 1
 
 
 if __name__ == "__main__":
+    global Q 
+    Q = 0.3
     env = simpy.Environment()
 
     # stops
@@ -96,6 +152,7 @@ if __name__ == "__main__":
     s7w = busStop(env, "s7w", 0.4)
     e3 = busStop(env, "e3", None)
     e4 = busStop(env, "e4", None)
+    endStops = [e1, e2, e3, e4]
     stopList = [s1e, s1w,
                 s2e, s2w,
                 s3e, s3w,
@@ -122,8 +179,11 @@ if __name__ == "__main__":
     r15 = 3
 
     # generator
-    for stop is stopList:
+
+    
+    for stop in stopList:
         generator = passengerGenerator(env, stop)
+    
 
     # route name: [[stops], [roads]]
     routes = {
@@ -136,6 +196,26 @@ if __name__ == "__main__":
             "E3E2": ["w", [e3, s6w, s5w, s2w, e2], [r13, r9, r7, r3]],
             "E4E2": ["w", [e4, s7w, s3w, e2], [r15, r12, r4]]
             }
-    env.process(passengerGenerator(env))
-    env.process(bus(env))
-    env.run()
+    
+   # bus_count = 10
+    sim_time = 600
+    bus_list = []
+    n_b = [5, 7, 10, 15]
+    
+    for val in n_b:
+        route_selector = routeSelector(env, routes)
+        for i in range(val):
+            start_stop = endStops[np.random.randint(len(endStops))]
+            bus_object = bus(env, 20, route_selector, i+1, start_stop)
+            bus_list.append(bus_object)
+            
+        env.run(until=sim_time)
+        
+        utilization_list = []
+        for bus in bus_list:
+            util_list = np.array(bus.getUtilizationLog())
+            average_util = sum(util_list)/sim_time
+            utilization_list.append(average_util)
+        
+        average_util2 = np.mean(np.array(utilization_list))
+    print(average_util2)
