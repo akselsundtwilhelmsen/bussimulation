@@ -1,5 +1,6 @@
 import numpy as np
 import simpy
+import matplotlib.pyplot as plt
 
 
 class passengerGenerator:
@@ -45,9 +46,8 @@ class routeSelector:
     
     def calculateWeight(self, route):
         passengerCount = 0
-        for key in routes.keys(): 
-            for stop in routes[key][1]:
-                passengerCount += stop.getPassengerCount()
+        for stop in route: 
+            passengerCount += stop.getPassengerCount()
         return passengerCount
 
     def pickRoute(self, startStop):
@@ -56,7 +56,7 @@ class routeSelector:
         for key in self.routes.keys():
             currentRoute = self.routes[key]
             if currentRoute[1][0] == startStop:
-                currentWeight = self.calculateWeight(currentRoute[1]) 
+                currentWeight = self.calculateWeight(currentRoute[1])
                 if currentWeight >= weight:
                     weight = currentWeight
                     bestRoute = currentRoute
@@ -85,6 +85,7 @@ class bus:
             route = self.routeSelector.pickRoute(startStop)
         else:
             route = self.routeSelector.pickRoute(self.routeStops[-1])
+        
         self.currentProgress = 0
         self.passengerCount = 0
         self.routeStops = route[1]
@@ -108,32 +109,28 @@ class bus:
         while True:
             if self.currentProgress >= self.routeLength:
                 self.setRoute()
-                print("")
-            else:
+            else:    
+                # Collect utilization statistcs
+                self.utilizationLog.append(self.passengerCount * self.routeRoads[self.currentProgress] / self.capacity)
+                
                 # Drop off passengers
                 for passenger in range(self.passengerCount):
                     if np.random.rand() < Q:
                         self.dropOff()
-                
+
                 # Pick up passengers
                 pickUpCount = self.calculatePickUpCount()
                 if pickUpCount > 0:
                     self.pickUp(pickUpCount)
-                print(f"Bus: {self.busID} has {self.passengerCount} passengers at {self.getCurrentStop().toString()}")
+                print(f"Bus {self.busID} has {self.passengerCount} passengers at {self.getCurrentStop().toString()}, at time {env.now}")
                 
-                # Collect utilization statistcs
-                self.utilizationLog.append(self.passengerCount * self.routeRoads[self.currentProgress] / self.capacity)
-                
+
                 yield env.timeout(self.routeRoads[self.currentProgress])
                 self.currentProgress += 1
 
 
-if __name__ == "__main__":
-    global Q 
-    Q = 0.3
-    env = simpy.Environment()
-
-    # stops
+def setupAndRun(env, simTime, n_b):
+    # Stops
     e1 = busStop(env, "e1", None)
     e2 = busStop(env, "e2", None)
     s1e = busStop(env, "s1e", 0.3)
@@ -161,7 +158,7 @@ if __name__ == "__main__":
                 s6e, s6w,
                 s7e, s7w]
 
-    # road travel times
+    # Road travel times
     r1 = 3
     r2 = 7
     r3 = 6
@@ -178,14 +175,11 @@ if __name__ == "__main__":
     r14 = 2
     r15 = 3
 
-    # generator
-
-    
+    # Passenger generators
     for stop in stopList:
-        generator = passengerGenerator(env, stop)
+        passengerGenerator(env, stop)
     
-
-    # route name: [[stops], [roads]]
+    # Routes
     routes = {
             "E1E3": ["e", [e1, s1e, s4e, s6e, e3], [r1, r5, r8, r13]],
             "E1E4": ["e", [e1, s2e, s5e, s7e, e4], [r2, r7, r11, r15]],
@@ -197,25 +191,59 @@ if __name__ == "__main__":
             "E4E2": ["w", [e4, s7w, s3w, e2], [r15, r12, r4]]
             }
     
-   # bus_count = 10
-    sim_time = 600
-    bus_list = []
+    # Create multiple buses
+    selector = routeSelector(env, routes)
+    busList = []
+    for i in range(n_b):
+        startStop = endStops[np.random.randint(len(endStops))] # Randomly pick a start position
+        busObject = bus(env, 20, selector, i+1, startStop)
+        busList.append(busObject)
+    
+    # Run simulation
+    env.run(until=simTime)
+    
+    # Calculate utilization
+    averageUtilList = []
+    for busInstance in busList:
+        util_list = np.array(busInstance.getUtilizationLog())
+        averageUtil = sum(util_list)/simTime
+        averageUtilList.append(averageUtil)
+    return np.mean(np.array(averageUtilList))
+
+
+if __name__ == "__main__":
+    global Q 
+    Q = 0.3 # Passenger leave probability
+    simTime = 600
     n_b = [5, 7, 10, 15]
     
-    for val in n_b:
-        route_selector = routeSelector(env, routes)
-        for i in range(val):
-            start_stop = endStops[np.random.randint(len(endStops))]
-            bus_object = bus(env, 20, route_selector, i+1, start_stop)
-            bus_list.append(bus_object)
-            
-        env.run(until=sim_time)
-        
-        utilization_list = []
-        for bus in bus_list:
-            util_list = np.array(bus.getUtilizationLog())
-            average_util = sum(util_list)/sim_time
-            utilization_list.append(average_util)
-        
-        average_util2 = np.mean(np.array(utilization_list))
-    print(average_util2)
+    # Run simulation multiple times
+    SE_list = []
+    outerAverageUtilizationList = []
+    for value in n_b:
+        averageUtilizationList = []
+        for i in range(15):
+            env = simpy.Environment()
+            averageUtilization = setupAndRun(env, simTime, value)
+            averageUtilizationList.append(averageUtilization)
+        outerAverageUtilizationList.append(np.mean(np.array(averageUtilizationList)))
+        SDsum = 0
+        for observation in averageUtilizationList:
+            #SD += np.observation - (np.mean(np.array(averageUtilizationList))/len(averageUtilizationList)-1)
+            #SE = SD/np.sqrt(len(averageUtilizationList))
+            #SE_list.append(SE)
+            SDsum += (observation-np.mean(np.array(averageUtilizationList)))**2
+        SD = np.sqrt(SDsum/(len(averageUtilizationList)-1))
+        SE_list.append(SD/np.sqrt(len(averageUtilizationList)))
+                
+    # Print average utilization
+    for i in range(len(n_b)):
+        print(f"{n_b[i]} buses results in an average utilization of {100*outerAverageUtilizationList[i]:.2f}% with standard error {SE_list[i]}.")
+    
+    plt.figure(figsize=(8, 6))
+    x_pos = np.arange(len(outerAverageUtilizationList))
+    plt.bar(x_pos, outerAverageUtilizationList, yerr=SE_list, align='center', alpha=0.7, capsize=10, color='skyblue')
+    plt.xticks(x_pos, n_b)
+    plt.ylabel('Average utilization')
+    plt.grid()
+    plt.show()
