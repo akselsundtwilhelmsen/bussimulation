@@ -246,26 +246,26 @@ def setupAndRun(env, simTime, n_b):
 
 
 def plotUtilization(n_b, averageUtilizationList, SE_list):
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(6, 4))
     x_pos = np.arange(len(averageUtilizationList))
     plt.bar(x_pos, averageUtilizationList, yerr=SE_list, align='center', alpha=0.7, capsize=10, color='skyblue')
     plt.xticks(x_pos, n_b)
     plt.ylabel('Average utilization')
     plt.xlabel('Number of buses')
     plt.title('Average Bus Utilization')
-    plt.grid()
+    plt.savefig('utilization.png', dpi=300)
     plt.show()
 
 
 def plotTravelTime(n_b, averageTravelTimeList):
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(6, 4))
     x_pos = np.arange(len(averageTravelTimeList))
     plt.bar(x_pos, averageTravelTimeList, align='center', alpha=0.7, capsize=10, color='skyblue')
     plt.xticks(x_pos, n_b)
     plt.ylabel('Average travel time')
     plt.xlabel('Number of buses')
     plt.title('Average Travel Time')
-    plt.grid()
+    plt.savefig('traveltime.png', dpi=300)
     plt.show()
 
 
@@ -301,11 +301,12 @@ if __name__ == "__main__":
         SE_list.append(SD/np.sqrt(len(averageUtilizationList)))
                 
     # Print average utilization
+    print()
     for i in range(len(n_b)):
-        print()
         print(f"{n_b[i]:<2} buses results in an average utilization of {100*totalAverageUtilizationList[i]:.2f}%")
         print(f"         with standard error {SE_list[i]:.6f}")
         print(f"         and average travel time {totalAverageTravelTimeList[i]:.2f} minutes.")
+        print()
 
     # Plot results
     plotUtilization(n_b, totalAverageUtilizationList, SE_list)
