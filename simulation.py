@@ -11,13 +11,14 @@ class passengerGenerator:
     def run(self):
         while True:
             wait = np.random.exponential(1/self.stop.getParameter())
-            self.stop.addPassenger()
+            self.stop.addPassenger(passenger())
             yield env.timeout(wait)
 
 
 class busStop:
     def __init__(self, env, label, parameter):
-        self.bin = simpy.Container(env)
+        # self.bin = simpy.Container(env)
+        self.bin = simpy.Store(env)
         self.label = label
         self.parameter = parameter
 
@@ -25,15 +26,12 @@ class busStop:
         return self.parameter
     
     def getPassengerCount(self):
-        return self.bin.level
-
-    def pickUp(self, n):
-        if self.parameter == None:
-            return 0
-        return self.bin.get(n)
+        # return self.bin.level
+        return len(self.bin.items)
     
-    def addPassenger(self):
-        self.bin.put(1)
+    def addPassenger(self, passenger):
+        # self.bin.put(1)
+        self.bin.put(passenger)
         
     def toString(self):
         return self.label
@@ -61,33 +59,37 @@ class routeSelector:
                     weight = currentWeight
                     bestRoute = currentRoute
         return bestRoute
+
+
+class passenger:
+    def __init__(self):
+        pass
+
+    def leaveBus(self):
+        pass # TODO calculate statistcs
         
 
 class bus:
     def __init__(self, env, capacity, routeSelector, busID, startStop):
         self.capacity = capacity
-        self.passengerCount = 0
         self.routeSelector = routeSelector
         self.setRoute(startStop)
         self.busID = busID
         self.utilizationLog = []
+        self.passengerList = []
         self.action = env.process(self.run())
-        
-    def pickUp(self, n):
-        self.getCurrentStop().pickUp(n)
-        self.passengerCount += n
     
     def dropOff(self):
-        self.passengerCount -= 1
+        leavingPassenger = self.passengerList.pop()
+        leavingPassenger.leaveBus()
 
     def setRoute(self, startStop=None):
         if startStop:
             route = self.routeSelector.pickRoute(startStop)
         else:
             route = self.routeSelector.pickRoute(self.routeStops[-1])
-        
         self.currentProgress = 0
-        self.passengerCount = 0
+        self.passengerList = []
         self.routeStops = route[1]
         self.routeRoads = route[2]
         self.routeLength = len(self.routeRoads)
@@ -100,7 +102,7 @@ class bus:
     
     def calculatePickUpCount(self):
         waitingPassengers = self.getCurrentStop().getPassengerCount()
-        maxPickup = self.capacity - self.passengerCount
+        maxPickup = self.capacity - len(self.passengerList)
         if(waitingPassengers < maxPickup):
             return waitingPassengers
         return maxPickup
@@ -111,19 +113,23 @@ class bus:
                 self.setRoute()
             else:    
                 # Collect utilization statistcs
-                self.utilizationLog.append(self.passengerCount * self.routeRoads[self.currentProgress] / self.capacity)
+                self.utilizationLog.append(len(self.passengerList) * self.routeRoads[self.currentProgress] / self.capacity)
                 
                 # Drop off passengers
-                for passenger in range(self.passengerCount):
+                for passenger in range(len(self.passengerList)):
                     if np.random.rand() < Q:
                         self.dropOff()
 
                 # Pick up passengers
                 pickUpCount = self.calculatePickUpCount()
-                if pickUpCount > 0:
-                    self.pickUp(pickUpCount)
-                print(f"Bus {self.busID} has {self.passengerCount} passengers at {self.getCurrentStop().toString()}, at time {env.now}")
-                
+                for i in range(pickUpCount):
+                    currentStop = self.getCurrentStop()
+                    if currentStop.parameter == 0:
+                        continue
+                    passenger = yield self.getCurrentStop().bin.get()
+                    self.passengerList.append(passenger)
+
+                print(f"Bus {self.busID:<2} has {len(self.passengerList):<2} passengers at {self.getCurrentStop().toString():<3} at time {env.now:.3f}")
 
                 yield env.timeout(self.routeRoads[self.currentProgress])
                 self.currentProgress += 1
@@ -238,7 +244,7 @@ if __name__ == "__main__":
                 
     # Print average utilization
     for i in range(len(n_b)):
-        print(f"{n_b[i]} buses results in an average utilization of {100*outerAverageUtilizationList[i]:.2f}% with standard error {SE_list[i]}.")
+        print(f"{n_b[i]:<2} buses results in an average utilization of {100*outerAverageUtilizationList[i]:.2f}% with standard error {SE_list[i]:.6f}")
     
     plt.figure(figsize=(8, 6))
     x_pos = np.arange(len(outerAverageUtilizationList))
