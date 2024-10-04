@@ -41,15 +41,20 @@ class routeSelector:
 
 
 class statisticsCollector:
-    def __init__(self):
+    def __init__(self, simTime):
+        self.simTime = simTime
         self.travelTimes = []
         self.utilizationLogs = []
 
     def addUtilizationLog(self, utilizationLog):
-        pass
+        self.utilizationLogs.append(utilizationLog)
 
-    def calculateAverageUtilizaion(self):
-        return
+    def calculateAverageUtilization(self):
+        averageUtilizationList = []
+        for log in self.utilizationLogs:
+            averageUtilization = sum(np.array(log))/self.simTime
+            averageUtilizationList.append(averageUtilization)
+        return np.mean(np.array(averageUtilizationList))
 
     def addTravelTime(self, travelTime):
         self.travelTimes.append(travelTime)
@@ -60,7 +65,6 @@ class statisticsCollector:
 
 class busStop:
     def __init__(self, env, label, parameter):
-        # self.bin = simpy.Container(env)
         self.bin = simpy.Store(env)
         self.label = label
         self.parameter = parameter
@@ -69,11 +73,9 @@ class busStop:
         return self.parameter
     
     def getPassengerCount(self):
-        # return self.bin.level
         return len(self.bin.items)
     
     def addPassenger(self, passenger):
-        # self.bin.put(1)
         self.bin.put(passenger)
         
     def toString(self):
@@ -128,6 +130,9 @@ class bus:
             return waitingPassengers
         return maxPickup
         
+    def passUtilizationData(self):
+        self.collector.addUtilizationLog(self.utilizationLog)
+
     def run(self):
         while True:
             if self.currentProgress >= self.routeLength:
@@ -150,6 +155,7 @@ class bus:
                     passenger = yield self.getCurrentStop().bin.get()
                     self.passengerList.append(passenger)
 
+                # Print bus status
                 print(f"Bus {self.busID:<2} has {len(self.passengerList):<2} passengers at {self.getCurrentStop().toString():<3} at time {env.now:.3f}")
 
                 yield env.timeout(self.routeRoads[self.currentProgress])
@@ -203,7 +209,7 @@ def setupAndRun(env, simTime, n_b):
     r15 = 3
 
     # Statistics collector
-    collector = statisticsCollector()
+    collector = statisticsCollector(simTime)
 
     # Passenger generators
     for stop in stopList:
@@ -221,24 +227,46 @@ def setupAndRun(env, simTime, n_b):
             "E4E2": ["w", [e4, s7w, s3w, e2], [r15, r12, r4]]
             }
     
-    # Create multiple buses
+    # Route selector
     selector = routeSelector(env, routes)
+
+    # Buses
     busList = []
     for i in range(n_b):
         startStop = endStops[np.random.randint(len(endStops))] # Randomly pick a start position
         busObject = bus(env, 20, selector, i+1, startStop, collector)
+        busObject.passUtilizationData()
         busList.append(busObject)
     
     # Run simulation
     env.run(until=simTime)
     
-    # Calculate utilization
-    averageUtilList = []
-    for busInstance in busList:
-        util_list = np.array(busInstance.getUtilizationLog())
-        averageUtil = sum(util_list)/simTime
-        averageUtilList.append(averageUtil)
-    return np.mean(np.array(averageUtilList)), collector.calculateAverageTravelTime()
+    # Return average utilization and average travel time
+    return collector.calculateAverageUtilization(), collector.calculateAverageTravelTime()
+
+
+def plotUtilization(n_b, averageUtilizationList, SE_list):
+    plt.figure(figsize=(8, 6))
+    x_pos = np.arange(len(averageUtilizationList))
+    plt.bar(x_pos, averageUtilizationList, yerr=SE_list, align='center', alpha=0.7, capsize=10, color='skyblue')
+    plt.xticks(x_pos, n_b)
+    plt.ylabel('Average utilization')
+    plt.xlabel('Number of buses')
+    plt.title('Average Bus Utilization')
+    plt.grid()
+    plt.show()
+
+
+def plotTravelTime(n_b, averageTravelTimeList):
+    plt.figure(figsize=(8, 6))
+    x_pos = np.arange(len(averageTravelTimeList))
+    plt.bar(x_pos, averageTravelTimeList, align='center', alpha=0.7, capsize=10, color='skyblue')
+    plt.xticks(x_pos, n_b)
+    plt.ylabel('Average travel time')
+    plt.xlabel('Number of buses')
+    plt.title('Average Travel Time')
+    plt.grid()
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -249,15 +277,23 @@ if __name__ == "__main__":
     
     # Run simulation multiple times
     SE_list = []
-    outerAverageUtilizationList = []
+    totalAverageUtilizationList = []
+    totalAverageTravelTimeList = []
     for value in n_b:
         averageUtilizationList = []
+        averageTravelTimeList = []
+
         for i in range(15):
             env = simpy.Environment()
             averageUtilization, averageTravelTime = setupAndRun(env, simTime, value)
             # TODO bruk averageTravelTime
             averageUtilizationList.append(averageUtilization)
-        outerAverageUtilizationList.append(np.mean(np.array(averageUtilizationList)))
+            averageTravelTimeList.append(averageTravelTime)
+
+        totalAverageUtilizationList.append(np.mean(np.array(averageUtilizationList)))
+        totalAverageTravelTimeList.append(np.mean(np.array(averageTravelTimeList)))
+
+        # Calculate standard error
         SDsum = 0
         for observation in averageUtilizationList:
             SDsum += (observation-np.mean(np.array(averageUtilizationList)))**2
@@ -266,12 +302,11 @@ if __name__ == "__main__":
                 
     # Print average utilization
     for i in range(len(n_b)):
-        print(f"{n_b[i]:<2} buses results in an average utilization of {100*outerAverageUtilizationList[i]:.2f}% with standard error {SE_list[i]:.6f}")
-    
-    plt.figure(figsize=(8, 6))
-    x_pos = np.arange(len(outerAverageUtilizationList))
-    plt.bar(x_pos, outerAverageUtilizationList, yerr=SE_list, align='center', alpha=0.7, capsize=10, color='skyblue')
-    plt.xticks(x_pos, n_b)
-    plt.ylabel('Average utilization')
-    plt.grid()
-    plt.show()
+        print()
+        print(f"{n_b[i]:<2} buses results in an average utilization of {100*totalAverageUtilizationList[i]:.2f}%")
+        print(f"         with standard error {SE_list[i]:.6f}")
+        print(f"         and average travel time {totalAverageTravelTimeList[i]:.2f} minutes.")
+
+    # Plot results
+    plotUtilization(n_b, totalAverageUtilizationList, SE_list)
+    plotTravelTime(n_b, totalAverageTravelTimeList)
