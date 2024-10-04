@@ -37,7 +37,7 @@ class busStop:
         for i in range(n):
             # passenger = self.bin.get()
             passenger = yield self.bin.get()
-            passenger.embark(bus)
+            bus.addPassenger(passenger)
     
     def addPassenger(self, passenger):
         self.bin.put(passenger)
@@ -79,9 +79,6 @@ class passenger:
         pass
         # TODO log travel time
 
-    def embark(self, bus):
-        bus.addPassenger(self)
-
 
 class bus:
     def __init__(self, env, capacity, routeSelector, busID, startStop):
@@ -91,14 +88,20 @@ class bus:
         self.setRoute(startStop)
         self.busID = busID
         self.utilizationLog = []
+        self.bin = simpy.Store(env)
         self.action = env.process(self.run())
         
     def pickUp(self, n):
         self.getCurrentStop().pickUp(self, n)
-        self.passengerCount += n
+        self.passengerCount += n # TODO redundant
+
+    def addPassenger(passenger):
+        self.bin.put(passenger)
     
     def dropOff(self):
-        self.passengerCount -= 1
+        self.passengerCount -= 1 # TODO redundant
+        passenger = yield self.bin.get()
+        passenger.leaveBus()
 
     def setRoute(self, startStop=None):
         if startStop:
