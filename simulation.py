@@ -30,14 +30,14 @@ class busStop:
         # return self.bin.level
         return len(self.bin.items)
 
-    def pickUp(self, n):
+    def pickUp(self, bus, n):
         if self.parameter == None:
             return 0
         # return self.bin.get(n) # TODO kan man ta ut n?
         for i in range(n):
             # passenger = self.bin.get()
             passenger = yield self.bin.get()
-            passenger.leaveBus()
+            passenger.embark(bus)
     
     def addPassenger(self, passenger):
         self.bin.put(passenger)
@@ -79,8 +79,8 @@ class passenger:
         pass
         # TODO log travel time
 
-    def embark(self):
-        pass
+    def embark(self, bus):
+        bus.addPassenger(self)
 
 
 class bus:
@@ -94,7 +94,7 @@ class bus:
         self.action = env.process(self.run())
         
     def pickUp(self, n):
-        self.getCurrentStop().pickUp(n)
+        self.getCurrentStop().pickUp(self, n)
         self.passengerCount += n
     
     def dropOff(self):
