@@ -28,6 +28,7 @@ class busStop:
     
     def getPassengerCount(self):
         # return self.bin.level
+        # print(len(self.bin.items))
         return len(self.bin.items)
 
     def pickUp(self, bus, n):
@@ -76,8 +77,8 @@ class passenger:
         self.stop = stop
 
     def leaveBus(self):
-        pass
         # TODO log travel time
+        print("left bus")
 
 
 class bus:
@@ -95,13 +96,8 @@ class bus:
         self.getCurrentStop().pickUp(self, n)
         self.passengerCount += n # TODO redundant
 
-    def addPassenger(passenger):
+    def addPassenger(self, passenger):
         self.bin.put(passenger)
-    
-    def dropOff(self):
-        self.passengerCount -= 1 # TODO redundant
-        passenger = yield self.bin.get()
-        passenger.leaveBus()
 
     def setRoute(self, startStop=None):
         if startStop:
@@ -139,12 +135,16 @@ class bus:
                 # Drop off passengers
                 for passenger in range(self.passengerCount):
                     if np.random.rand() < Q:
-                        self.dropOff()
+                        passenger = yield self.bin.get()
+                        passenger.leaveBus()
+                        self.passengerCount -= 1 # TODO redundant
 
                 # Pick up passengers
                 pickUpCount = self.calculatePickUpCount()
-                if pickUpCount > 0:
-                    self.pickUp(pickUpCount)
+                # if pickUpCount > 0:
+                    # yield self.pickUp(pickUpCount)
+                for i in range(pickUpCount):
+                    self.getCurrentStop().bin.get()
                 print(f"Bus {self.busID} has {self.passengerCount} passengers at {self.getCurrentStop().toString()}, at time {env.now}")
                 
 
