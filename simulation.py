@@ -39,6 +39,11 @@ class routeSelector:
                     bestRoute = currentRoute
         return bestRoute
 
+    def pickRandomRoute(self, startStop):
+        keys = list(self.routes.keys())
+        index = np.random.randint(len(keys))
+        return self.routes[keys[index]]
+
 
 class statisticsCollector:
     def __init__(self, simTime):
@@ -309,13 +314,12 @@ if __name__ == "__main__":
         SE_traveltime_list.append(SD/np.sqrt(len(averageTravelTimeList)))
                 
     # Print average utilization
-    print("")
     for i in range(len(n_b)):
+        print("")
         print(f"{n_b[i]:<2} buses results in an average utilization of {100*totalAverageUtilizationList[i]:.2f}%")
         print(f"         with standard error {SE_utilization_list[i]:.6f}")
         print(f"         and average travel time {totalAverageTravelTimeList[i]:.2f} minutes")
         print(f"         with standard error {SE_traveltime_list[i]:.6f}.")
-        print("")
 
     # Plot results
     plotUtilization(n_b, totalAverageUtilizationList, SE_utilization_list)
