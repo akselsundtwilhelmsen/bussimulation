@@ -4,37 +4,16 @@ import matplotlib.pyplot as plt
 
 
 class passengerGenerator:
-    def __init__(self, env, stop):
+    def __init__(self, env, stop, statisticsCollector):
         self.stop = stop
+        self.collector = statisticsCollector
         self.action = env.process(self.run())
 
     def run(self):
         while True:
             wait = np.random.exponential(1/self.stop.getParameter())
-            self.stop.addPassenger(passenger())
+            self.stop.addPassenger(passenger(env, self.collector))
             yield env.timeout(wait)
-
-
-class busStop:
-    def __init__(self, env, label, parameter):
-        # self.bin = simpy.Container(env)
-        self.bin = simpy.Store(env)
-        self.label = label
-        self.parameter = parameter
-
-    def getParameter(self):
-        return self.parameter
-    
-    def getPassengerCount(self):
-        # return self.bin.level
-        return len(self.bin.items)
-    
-    def addPassenger(self, passenger):
-        # self.bin.put(1)
-        self.bin.put(passenger)
-        
-    def toString(self):
-        return self.label
 
 
 class routeSelector:
@@ -61,22 +40,64 @@ class routeSelector:
         return bestRoute
 
 
-class passenger:
+class statisticsCollector:
     def __init__(self):
+        self.travelTimes = []
+        self.utilizationLogs = []
+
+    def addUtilizationLog(self, utilizationLog):
         pass
 
+    def calculateAverageUtilizaion(self):
+        return
+
+    def addTravelTime(self, travelTime):
+        self.travelTimes.append(travelTime)
+
+    def calculateAverageTravelTime(self):
+        return np.mean(np.array(self.travelTimes))
+
+
+class busStop:
+    def __init__(self, env, label, parameter):
+        # self.bin = simpy.Container(env)
+        self.bin = simpy.Store(env)
+        self.label = label
+        self.parameter = parameter
+
+    def getParameter(self):
+        return self.parameter
+    
+    def getPassengerCount(self):
+        # return self.bin.level
+        return len(self.bin.items)
+    
+    def addPassenger(self, passenger):
+        # self.bin.put(1)
+        self.bin.put(passenger)
+        
+    def toString(self):
+        return self.label
+
+
+class passenger:
+    def __init__(self, env, statisticsCollector):
+        self.spawnTime = env.now
+        self.collector = statisticsCollector
+
     def leaveBus(self):
-        pass # TODO calculate statistcs
+        self.collector.addTravelTime(env.now - self.spawnTime)
         
 
 class bus:
-    def __init__(self, env, capacity, routeSelector, busID, startStop):
+    def __init__(self, env, capacity, routeSelector, busID, startStop, statisticsCollector):
         self.capacity = capacity
         self.routeSelector = routeSelector
         self.setRoute(startStop)
         self.busID = busID
         self.utilizationLog = []
         self.passengerList = []
+        self.collector = statisticsCollector
         self.action = env.process(self.run())
     
     def dropOff(self):
@@ -116,7 +137,7 @@ class bus:
                 self.utilizationLog.append(len(self.passengerList) * self.routeRoads[self.currentProgress] / self.capacity)
                 
                 # Drop off passengers
-                for passenger in range(len(self.passengerList)):
+                for _ in range(len(self.passengerList)):
                     if np.random.rand() < Q:
                         self.dropOff()
 
@@ -181,9 +202,12 @@ def setupAndRun(env, simTime, n_b):
     r14 = 2
     r15 = 3
 
+    # Statistics collector
+    collector = statisticsCollector()
+
     # Passenger generators
     for stop in stopList:
-        passengerGenerator(env, stop)
+        passengerGenerator(env, stop, collector)
     
     # Routes
     routes = {
@@ -202,7 +226,7 @@ def setupAndRun(env, simTime, n_b):
     busList = []
     for i in range(n_b):
         startStop = endStops[np.random.randint(len(endStops))] # Randomly pick a start position
-        busObject = bus(env, 20, selector, i+1, startStop)
+        busObject = bus(env, 20, selector, i+1, startStop, collector)
         busList.append(busObject)
     
     # Run simulation
@@ -214,7 +238,7 @@ def setupAndRun(env, simTime, n_b):
         util_list = np.array(busInstance.getUtilizationLog())
         averageUtil = sum(util_list)/simTime
         averageUtilList.append(averageUtil)
-    return np.mean(np.array(averageUtilList))
+    return np.mean(np.array(averageUtilList)), collector.calculateAverageTravelTime()
 
 
 if __name__ == "__main__":
@@ -230,14 +254,12 @@ if __name__ == "__main__":
         averageUtilizationList = []
         for i in range(15):
             env = simpy.Environment()
-            averageUtilization = setupAndRun(env, simTime, value)
+            averageUtilization, averageTravelTime = setupAndRun(env, simTime, value)
+            # TODO bruk averageTravelTime
             averageUtilizationList.append(averageUtilization)
         outerAverageUtilizationList.append(np.mean(np.array(averageUtilizationList)))
         SDsum = 0
         for observation in averageUtilizationList:
-            #SD += np.observation - (np.mean(np.array(averageUtilizationList))/len(averageUtilizationList)-1)
-            #SE = SD/np.sqrt(len(averageUtilizationList))
-            #SE_list.append(SE)
             SDsum += (observation-np.mean(np.array(averageUtilizationList)))**2
         SD = np.sqrt(SDsum/(len(averageUtilizationList)-1))
         SE_list.append(SD/np.sqrt(len(averageUtilizationList)))
