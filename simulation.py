@@ -257,10 +257,10 @@ def plotUtilization(n_b, averageUtilizationList, SE_list):
     plt.show()
 
 
-def plotTravelTime(n_b, averageTravelTimeList):
+def plotTravelTime(n_b, averageTravelTimeList, SE_list):
     plt.figure(figsize=(6, 4))
     x_pos = np.arange(len(averageTravelTimeList))
-    plt.bar(x_pos, averageTravelTimeList, align='center', alpha=0.7, capsize=10, color='skyblue')
+    plt.bar(x_pos, averageTravelTimeList, yerr=SE_list, align='center', alpha=0.7, capsize=10, color='skyblue')
     plt.xticks(x_pos, n_b)
     plt.ylabel('Average travel time')
     plt.xlabel('Number of buses')
@@ -276,7 +276,8 @@ if __name__ == "__main__":
     n_b = [5, 7, 10, 15]
     
     # Run simulation multiple times
-    SE_list = []
+    SE_utilization_list = []
+    SE_traveltime_list = []
     totalAverageUtilizationList = []
     totalAverageTravelTimeList = []
     for value in n_b:
@@ -293,21 +294,29 @@ if __name__ == "__main__":
         totalAverageUtilizationList.append(np.mean(np.array(averageUtilizationList)))
         totalAverageTravelTimeList.append(np.mean(np.array(averageTravelTimeList)))
 
-        # Calculate standard error
+        # Calculate standard error for utilization
         SDsum = 0
         for observation in averageUtilizationList:
             SDsum += (observation-np.mean(np.array(averageUtilizationList)))**2
         SD = np.sqrt(SDsum/(len(averageUtilizationList)-1))
-        SE_list.append(SD/np.sqrt(len(averageUtilizationList)))
+        SE_utilization_list.append(SD/np.sqrt(len(averageUtilizationList)))
+                
+        # Calculate standard error for utilization
+        SDsum = 0
+        for observation in averageTravelTimeList:
+            SDsum += (observation-np.mean(np.array(averageTravelTimeList)))**2
+        SD = np.sqrt(SDsum/(len(averageTravelTimeList)-1))
+        SE_traveltime_list.append(SD/np.sqrt(len(averageTravelTimeList)))
                 
     # Print average utilization
-    print()
+    print("")
     for i in range(len(n_b)):
         print(f"{n_b[i]:<2} buses results in an average utilization of {100*totalAverageUtilizationList[i]:.2f}%")
-        print(f"         with standard error {SE_list[i]:.6f}")
-        print(f"         and average travel time {totalAverageTravelTimeList[i]:.2f} minutes.")
-        print()
+        print(f"         with standard error {SE_utilization_list[i]:.6f}")
+        print(f"         and average travel time {totalAverageTravelTimeList[i]:.2f} minutes")
+        print(f"         with standard error {SE_traveltime_list[i]:.6f}.")
+        print("")
 
     # Plot results
-    plotUtilization(n_b, totalAverageUtilizationList, SE_list)
-    plotTravelTime(n_b, totalAverageTravelTimeList)
+    plotUtilization(n_b, totalAverageUtilizationList, SE_utilization_list)
+    plotTravelTime(n_b, totalAverageTravelTimeList, SE_traveltime_list)
