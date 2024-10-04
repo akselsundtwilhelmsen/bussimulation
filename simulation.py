@@ -7,17 +7,19 @@ class passengerGenerator:
     def __init__(self, env, stop):
         self.stop = stop
         self.action = env.process(self.run())
+        self.env = env
 
     def run(self):
         while True:
+            self.stop.addPassenger(passenger(self.env, self.stop))
             wait = np.random.exponential(1/self.stop.getParameter())
-            self.stop.addPassenger()
             yield env.timeout(wait)
 
 
 class busStop:
     def __init__(self, env, label, parameter):
-        self.bin = simpy.Container(env)
+        # self.bin = simpy.Container(env)
+        self.bin = simpy.Store(env)
         self.label = label
         self.parameter = parameter
 
@@ -25,15 +27,20 @@ class busStop:
         return self.parameter
     
     def getPassengerCount(self):
-        return self.bin.level
+        # return self.bin.level
+        return len(self.bin.items)
 
     def pickUp(self, n):
         if self.parameter == None:
             return 0
-        return self.bin.get(n)
+        # return self.bin.get(n) # TODO kan man ta ut n?
+        for i in range(n):
+            # passenger = self.bin.get()
+            passenger = yield self.bin.get()
+            passenger.leaveBus()
     
-    def addPassenger(self):
-        self.bin.put(1)
+    def addPassenger(self, passenger):
+        self.bin.put(passenger)
         
     def toString(self):
         return self.label
@@ -61,7 +68,20 @@ class routeSelector:
                     weight = currentWeight
                     bestRoute = currentRoute
         return bestRoute
-        
+
+
+class passenger:
+    def __init__(self, env, stop):
+        self.spawnTime = env.now
+        self.stop = stop
+
+    def leaveBus(self):
+        pass
+        # TODO log travel time
+
+    def embark(self):
+        pass
+
 
 class bus:
     def __init__(self, env, capacity, routeSelector, busID, startStop):
